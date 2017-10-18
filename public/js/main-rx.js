@@ -1,5 +1,9 @@
 // TODO: Make a RxJS vrsion of the game
 
+import './lib/Rx.js';
+
+// var asd = Rx.Observable();
+
 const FIXED_RATE = 1000 / 15;
 
 let ctx;
