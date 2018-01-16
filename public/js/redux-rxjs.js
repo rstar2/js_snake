@@ -20,12 +20,12 @@ export class Store extends Rx.BehaviorSubject {
         this._reducer = reducer;
 
         this._listMiddleware = [];
-        this._listMiddleware.push(...middlewares);
+        this._listMiddleware.push(...middlewares.map(middleware=> middleware(this)));
 
         this._dispatcher = new Rx.Subject();
         this._dispatcher.
             scan((state, action) => {
-                return this._reducer(state, action)
+                return this._reducer(state, action);
             }, initialState).
             distinctUntilChanged().
             subscribe((state) => {

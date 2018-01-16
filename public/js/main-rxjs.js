@@ -44,20 +44,19 @@ const reducer = (state, action) => {
         case 'KEY_EVENT':
             return reducerKeyEvent(state, action.payload);
         case 'UPDATE':
-            return reduceUpdate(state);
+            return reduceUpdate(state, action.asyncDispatch);
         default:
             return state;
     }
 };
 
-function reducerStartReset(state, isStarted) {
-    if (!state.isStarted && isStarted) {
+function reducerStartReset(state, toStart) {
+    if (!state.isStarted && toStart) {
         return Object.assign({}, state, { isStarted: true });
-    } else if (state.isStarted && !isStarted) {
+    } else if (state.isStarted && !toStart) {
         return initialState;
-    } else {
-        return state;
     }
+    return state;
 }
 
 function reducerKeyEvent(state, keyCode) {
@@ -100,8 +99,10 @@ function reducerKeyEvent(state, keyCode) {
         Object.assign({}, state, { xVel, yVel }) : state;
 }
 
-function reduceUpdate(state) {
+function reduceUpdate(state, asyncDispatch) {
+    // deep clone the whole state  - primitive values as well as the 'tail' array
     let newState = Object.assign({}, state);
+    newState.tail = [...newState.tail];
 
     // update position just depending on the velocity (assuming constant 1 rate)
     newState.x += newState.xVel;
@@ -123,8 +124,11 @@ function reduceUpdate(state) {
     // check for END - head bites itself
     let lost = newState.tail.some(t => (t.x === newState.x && t.y === newState.y));
     if (lost) {
-        // TODO: Move this as asyncDispatch
-        store.dispatch({ type: 'RESET' });
+        // send a new action from this reducer
+        // this is not an ANTI-pattern if it's send as asyncDispatch
+        // this is possible because of the asyncDispatchMiddleware,
+        // that attaches a 'asyncDispatch' method to all handled actions
+        asyncDispatch({ type: 'RESET' });
         return state;
     }
 
@@ -134,7 +138,7 @@ function reduceUpdate(state) {
 
     // remove the last
     while (newState.tailCount < newState.tail.length) {
-        state.tail.pop();
+        newState.tail.pop();
     }
 
     // check for apple bite
@@ -152,7 +156,7 @@ function reduceUpdate(state) {
             if (overlap) {
                 createApple();
             }
-        }
+        };
         createApple();
     }
 
