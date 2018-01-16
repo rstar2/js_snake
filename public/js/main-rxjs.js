@@ -1,6 +1,6 @@
 /* global Rx */
 
-import Store from './redux-rxjs.js';
+import { Store, asyncDispatchMiddleware } from './redux-rxjs.js';
 
 const FIXED_RATE = 1000 / 15;
 
@@ -20,8 +20,8 @@ const initialState = {
     y: GRID_COUNT / 2,
 
     // snake's x and y velocities
-    xVel: 50,
-    yVel: 50,
+    xVel: 1,
+    yVel: 1,
 
     // snake's tail - length and tiles
     tailCount: 5,
@@ -31,141 +31,132 @@ const initialState = {
     ax: 15,
     ay: 15,
 
-    // interval's ID
-    isStarted: undefined
+    // game's started state
+    isStarted: false
 };
+
 const reducer = (state, action) => {
-    switch (action) {
+    switch (action.type) {
+        case 'START':
+            return reducerStartReset(state, true);
+        case 'RESET':
+            return reducerStartReset(state, false);
+        case 'KEY_EVENT':
+            return reducerKeyEvent(state, action.payload);
+        case 'UPDATE':
+            return reduceUpdate(state);
         default:
             return state;
     }
 };
-const store = new Store(reducer, initialState);
-store.subscribe(redraw);
 
-Rx.Observable.fromEvent(document, 'keydown').
-    map(handleKeyEvent).
-    subscribe(action => store.dispatch(action));
-
-Rx.Observable.interval(FIXED_RATE).subscribe(() => {
-    update(store.getState());
-});
-
-function start() {
-    if (!state.isStarted) {
-        // for simplicity use setInterval and not a rela game timer with requestAnimationFrame()
-        state.isStarted = setInterval(update, FIXED_RATE);
+function reducerStartReset(state, isStarted) {
+    if (!state.isStarted && isStarted) {
+        return Object.assign({}, state, { isStarted: true });
+    } else if (state.isStarted && !isStarted) {
+        return initialState;
+    } else {
+        return state;
     }
 }
 
-function reset() {
-    if (state.isStarted) {
-        clearInterval(state.isStarted);
-        alert(`Lost - score ${state.tailCount}`);
-    }
-
-    // reset game
-    state.x = state.y = GRID_COUNT / 2;
-    state.xVel = state.yVel = 0;
-    state.tail = [];
-    state.tailCount = 5;
-    state.ax = state.ay = 15;
-    state.isStarted = undefined;
-
-    redraw();
-}
-
-function handleKeyEvent(event) {
-    switch (event.keyCode) {
-        case 37:
-        case 38:
-        case 39:
-        case 40:
-            start();
-    }
-
-    // TODO:  don't allow to move left while moving right, 
+function reducerKeyEvent(state, keyCode) {
+    // don't allow to move left while moving right, 
     // up while down adn etc.
-    switch (event.keyCode) {
+    let xVel, yVel;
+    switch (keyCode) {
         case 37:
-            // left (if not alredy moving right)
-            if (state.xVel !== 1) {
-                state.xVel = -1;
-                state.yVel = 0;
+            // left (if moving up/down)
+            if (state.yVel !== 0) {
+                xVel = -1;
+                yVel = 0;
             }
             break;
         case 38:
-            // up (if not alredy moving down)
-            if (state.yVel !== 1) {
-                state.xVel = 0;
-                state.yVel = -1;
+            // up (if moving left/right)
+            if (state.xVel !== 0) {
+                xVel = 0;
+                yVel = -1;
             }
             break;
 
         case 39:
-            // right (if not alredy moving left)
-            if (state.xVel !== -1) {
-                state.xVel = 1;
-                state.yVel = 0;
+            // right (if moving up/down)
+            if (state.yVel !== 0) {
+                xVel = 1;
+                yVel = 0;
             }
             break;
         case 40:
-            // down (if not alredy moving up)
-            if (state.yVel !== -1) {
-                state.xVel = 0;
-                state.yVel = 1;
+            // down (if moving left/right)
+            if (state.xVel !== 0) {
+                xVel = 0;
+                yVel = 1;
             }
             break;
     }
+
+    return xVel !== undefined && yVel !== undefined ?
+        Object.assign({}, state, { xVel, yVel }) : state;
 }
 
-function update(state) {
-    // remember the last head
-    let xPrev = state.x, yPrev = state.y;
+function reduceUpdate(state) {
+    let newState = Object.assign({}, state);
 
-    // update position just depending on the velocity (assumenig constant 1 rate)
-    state.x += state.xVel;
-    state.y += state.yVel;
+    // update position just depending on the velocity (assuming constant 1 rate)
+    newState.x += newState.xVel;
+    newState.y += newState.yVel;
 
-    if (state.x < 0) {
-        state.x = GRID_COUNT - 1;
+    if (newState.x < 0) {
+        newState.x = GRID_COUNT - 1;
     }
-    if (state.x > GRID_COUNT - 1) {
-        state.x = 0;
+    if (newState.x > GRID_COUNT - 1) {
+        newState.x = 0;
     }
-    if (state.y < 0) {
-        state.y = GRID_COUNT - 1;
+    if (newState.y < 0) {
+        newState.y = GRID_COUNT - 1;
     }
-    if (state.y > GRID_COUNT - 1) {
-        state.y = 0;
+    if (newState.y > GRID_COUNT - 1) {
+        newState.y = 0;
     }
 
     // check for END - head bites itself
-    let lost = state.tail.some(t => (t.x === state.x && t.y === state.y));
+    let lost = newState.tail.some(t => (t.x === newState.x && t.y === newState.y));
     if (lost) {
-        reset();
-        return;
+        // TODO: Move this as asyncDispatch
+        store.dispatch({ type: 'RESET' });
+        return state;
     }
 
 
     // put the last head as first tail element
-    state.tail.unshift({ x: xPrev, y: yPrev });
+    newState.tail.unshift({ x: state.x, y: state.y });
 
     // remove the last
-    while (state.tailCount < state.tail.length) {
+    while (newState.tailCount < newState.tail.length) {
         state.tail.pop();
     }
 
-
-
     // check for apple bite
-    if (state.ax === state.x && state.ay === state.y) {
-        state.tailCount += 3;
-        state.ax = Math.floor(Math.random() * GRID_COUNT);
-        state.ay = Math.floor(Math.random() * GRID_COUNT);
+    if (newState.ax === newState.x && newState.ay === newState.y) {
+        newState.tailCount += 3;
 
-        // TODO:  check if the apple is not the tail and if then create another
+        const createApple = () => {
+            newState.ax = Math.floor(Math.random() * GRID_COUNT);
+            newState.ay = Math.floor(Math.random() * GRID_COUNT);
+
+            // check if the apple is not 'created' somewhere on the snake and if so then create another
+            // concat the head and tail and check over it
+            let overlap = newState.tail.concat([{ x: newState.x, y: newState.y }]).
+                some(t => (t.x === newState.ax && t.y === newState.ay));
+            if (overlap) {
+                createApple();
+            }
+        }
+        createApple();
     }
+
+    return newState;
 }
 
 function redraw(state) {
@@ -184,3 +175,38 @@ function redraw(state) {
     ctx.fillStyle = "lime";
     state.tail.forEach(t => ctx.fillRect(t.x * GRID_SIZE, t.y * GRID_SIZE, GRID_SIZE, GRID_SIZE));
 }
+
+Rx.Observable.fromEvent(document, 'keydown').
+    map(event => event.keyCode).
+    filter(keyCode => {
+        switch (keyCode) {
+            case 37:
+            case 38:
+            case 39:
+            case 40:
+                return true;
+        }
+        return false;
+    }).
+    do(() => store.dispatch({ type: 'START' })).
+    map(keyCode => ({ type: 'KEY_EVENT', payload: keyCode })).
+    subscribe(event => store.dispatch(event));
+
+
+const interval$ = Rx.Observable.interval(FIXED_RATE).
+    map(() => ({ type: 'UPDATE' }));
+let gameUpdateUnsubscribe;
+
+const store = new Store(reducer, initialState, asyncDispatchMiddleware);
+store.subscribe(redraw);
+
+store.select('isStarted').subscribe(isStarted => {
+    if (isStarted) {
+        gameUpdateUnsubscribe = interval$.subscribe(event => store.dispatch(event));
+    } else {
+        if (gameUpdateUnsubscribe)
+            gameUpdateUnsubscribe.unsubscribe();
+    }
+});
+
+

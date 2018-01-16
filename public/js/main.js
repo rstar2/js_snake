@@ -166,5 +166,4 @@ function redraw() {
 
     ctx.fillStyle = "lime";
     tail.forEach(t => ctx.fillRect(t.x * GRID_SIZE, t.y * GRID_SIZE, GRID_SIZE, GRID_SIZE));
-
 }

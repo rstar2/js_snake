@@ -11,7 +11,7 @@
     "rules": {
         "no-var": "warn",
         "consistent-return":"error",
-        "indent"           : ["warn", 4],
+        "indent"           : ["warn", 4,  { "SwitchCase": 1 }],
         "no-else-return"   : "warn",
         "semi"             : ["warn", "always"],
         "space-unary-ops"  :"error"
