@@ -239,7 +239,10 @@ store.select('isStarted').
     });
 
 // listen ONLY to the 'tailCount' and use as a score
-Rx.Observable.of(initialState.tailCount).concat(store.select('tailCount')).
+store.select('tailCount').
+    // start with a dummy one as we will pairwise - e.g. lister not the pair of the previous and current values
+    // if not started with another then the 'pairwise' will emit a pair value on the second emitted value 
+    startWith(initialState.tailCount).
     // "normalize it to a score"
     map(tailCount => tailCount - initialState.tailCount).
 
