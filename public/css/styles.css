@@ -1,0 +1,10 @@
+#screen {
+    width: 100%;
+    margin: 20px auto;
+    image-rendering: pixelated;
+}
+
+#result {
+    width: 100%;
+    text-align: center;
+}

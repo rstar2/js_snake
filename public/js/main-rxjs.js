@@ -8,6 +8,7 @@ const GRID_SIZE = 20;
 const GRID_COUNT = 20;
 const CANVAS_SIZE = GRID_SIZE * GRID_COUNT;
 
+const result = document.getElementById('result');
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d');
 // for simplicity make the canvas be rectangular
@@ -145,19 +146,30 @@ function reduceUpdate(state, asyncDispatch) {
     if (newState.ax === newState.x && newState.ay === newState.y) {
         newState.tailCount += 3;
 
-        const createApple = () => {
-            newState.ax = Math.floor(Math.random() * GRID_COUNT);
-            newState.ay = Math.floor(Math.random() * GRID_COUNT);
-
-            // check if the apple is not 'created' somewhere on the snake and if so then create another
-            // concat the head and tail and check over it
-            let overlap = newState.tail.concat([{ x: newState.x, y: newState.y }]).
-                some(t => (t.x === newState.ax && t.y === newState.ay));
-            if (overlap) {
-                createApple();
+        // check if the apple is not 'created' somewhere on the snake and if so then create another
+        // snake = the head and tail together
+        const snake = newState.tail.concat([{ x: newState.x, y: newState.y }]);
+        const freeSlots = [];
+        for (let y = 0; y < GRID_COUNT; y++) {
+            for (let x = 0; x < GRID_COUNT; x++) {
+                if (snake.some(t => (t.x === x && t.y === y))) {
+                    continue;
+                }
+                else {
+                    freeSlots.push({ x, y });
+                }
             }
-        };
-        createApple();
+        }
+
+        const apple = freeSlots.length === 0 ? null :
+            freeSlots.length === 1 ? freeSlots[0] : freeSlots[Math.floor(Math.random() * freeSlots.length)];
+        if (apple) {
+            newState.ax = apple.x;
+            newState.ay = apple.y;
+        } else {
+            // winner - all is full
+            asyncDispatch({ type: 'RESET' });
+        }
     }
 
     return newState;
@@ -202,15 +214,47 @@ const interval$ = Rx.Observable.interval(FIXED_RATE).
 let gameUpdateUnsubscribe;
 
 const store = new Store(reducer, initialState, asyncDispatchMiddleware);
+
+// listen to any change in the state and
 store.subscribe(redraw);
 
-store.select('isStarted').subscribe(isStarted => {
-    if (isStarted) {
-        gameUpdateUnsubscribe = interval$.subscribe(event => store.dispatch(event));
-    } else {
-        if (gameUpdateUnsubscribe)
-            gameUpdateUnsubscribe.unsubscribe();
-    }
-});
+// TODO:
+// this will not work when the lst position is 15 before losing - so 'distinctUntilChanged' will
+// not trigger - so make the init state -1, -1 or something similar
+// store.select('ax').zip(store.select('ay')).
+//     subscribe(([ax, ay]) => {
+//         console.log(`Apple x=${ax} , y=${ay}`);
+//     });
 
+// listen ONLY to the 'started' state and if started then start the timer-interval stream
+// and when game is "finished" - stop the timer-interval
+store.select('isStarted').
+    subscribe(isStarted => {
+        if (isStarted) {
+            gameUpdateUnsubscribe = interval$.subscribe(event => store.dispatch(event));
+        } else {
+            if (gameUpdateUnsubscribe)
+                gameUpdateUnsubscribe.unsubscribe();
+        }
+    });
 
+// listen ONLY to the 'tailCount' and use as a score
+Rx.Observable.of(initialState.tailCount).concat(store.select('tailCount')).
+    // "normalize it to a score"
+    map(tailCount => tailCount - initialState.tailCount).
+
+    // pair with the previous/last one
+    pairwise().
+
+    // combine it with the started state
+    combineLatest(store.select('isStarted')).
+
+    subscribe(([[lastScore, score], isStarted]) => {
+        // if isStarted - show current score
+        if (isStarted) {
+            result.innerText = `Score : ${score}`;
+        } else {
+            // otherwise - show last score
+            result.innerText = `Last score : ${lastScore}`;
+        }
+    });
